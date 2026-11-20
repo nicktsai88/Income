@@ -516,7 +516,7 @@
             @media(min-width:2100px){.page.ledger{max-width:88em}.topbar{padding-inline:max(32px,calc((100vw - 2020px)/2))}}
             @media(max-width:750px){.page.ledger{width:100%}.ledger .section-head{align-items:flex-start}.ledger .weeks{min-width:1050px}}
         }
-        .ledger{--income-ink:#155c48;--income-bg:#eaf6ef;--expense-ink:#823d1b;--expense-bg:#fff2e7;--profit-ink:#443b86;--profit-bg:#f0edfc}
+        .ledger{--income-ink:#783968;--income-bg:#f9eaf7;--expense-ink:#823d1b;--expense-bg:#fff2e7;--profit-ink:#443b86;--profit-bg:#f0edfc}
         .ledger .zone{border:1px solid var(--line);border-inline-start:5px solid var(--tone);background:var(--tint);border-radius:15px;padding:1em;margin:1em 0;color:var(--tone)}
         .ledger .income-zone{--tone:var(--income-ink);--tint:var(--income-bg)}
         .ledger .expense-zone{--tone:var(--expense-ink);--tint:var(--expense-bg)}
@@ -529,7 +529,16 @@
         .fix-dialog::backdrop{background:rgb(39 31 39 / .45)}
         .fix-head{position:sticky;top:0;background:#fff2e7;padding:1em;z-index:2;border-bottom:1px solid #ddcfbe}
         .ledger .fix-head h2{margin:0}.fix-content{padding:1em}
-        </style>
+        
+.ledger details.week-sheet{padding:0;overflow:hidden;margin:1em 0;border:1px solid #f2c4df;border-radius:1.2em;background:#fff8fc}
+.week-sheet>summary{display:flex;align-items:center;justify-content:space-between;padding:.85em 1.1em;background:linear-gradient(115deg,#efa4d2,#d7aff7 55%,#aebafd);font-size:1.45em;color:#432345;list-style:none}
+.week-sheet>summary::-webkit-details-marker{display:none}.sheet-toggle::after{content:'＋'}.week-sheet[open] .sheet-toggle::after{content:'×'}.sheet-toggle{display:grid;place-items:center;border-radius:50%;background:#ffffff70;min-width:1.55em}
+.week-sheet .ledger-scroll{padding:.75em}.ledger .week-sheet table{border-collapse:separate;border-spacing:.3em .65em;background:transparent;min-width:68rem;margin:0}.ledger .week-sheet th,.ledger .week-sheet td{border:0;padding:0;text-align:center}
+.week-sheet thead th{background:#f9e5f1;color:#863262}.ledger .week-sheet thead th{padding:.7em .25em}.week-sheet thead th:nth-child(7){color:#7031af}.week-sheet thead th:nth-child(8){color:#3057a4}
+.ledger .week-sheet .weeks input,.week-sheet output,.week-sheet tbody th span{display:block;width:100%;padding:.62em .45em;background:#fff;border:1px solid #f0c9e3;border-radius:.65em;font:inherit;font-weight:650;text-align:right;font-variant-numeric:tabular-nums}.ledger .week-sheet input[type=date]{width:100%;min-width:9em}.week-sheet input::placeholder{color:#8a808c;font-weight:400}.week-sheet tbody th span{text-align:center;color:#a03a77}.week-sheet output[data-actual],.week-sheet #weeks-total{background:#f6f0ff;color:#762fb4}
+.week-sheet output[data-sign=positive]{color:#116535;background:#eaf9ee;border-color:#a3d5af}.week-sheet output[data-sign=negative]{color:#b32336;background:#fff0f2;border-color:#f2b1ba}.week-sheet output[data-sign=zero],.week-sheet output[data-sign=pending]{color:#635d69;background:#f6f4f6}
+.week-sheet tfoot{background:#f9d9ed;color:#822b60}.ledger .week-sheet tfoot th{text-align:right;padding:.65em}.sheet-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:.8em;padding:1em;background:white}.sheet-actions p{margin:0 auto 0 0}
+</style>
 <script type="text/plain" id="income-firestore-rules">
 // 放在現有 Firestore 規則的 match /databases/{database}/documents 內，取代原有 Income 授權，並核對是否有其他重疊規則授權其他帳號。
 match /Income/{store}/months/{period} {
@@ -618,7 +627,7 @@ function showToast(message) {
 const incomeStores = ['陽明','大昌','建興','後昌','左營','明誠','華榮','斗六','光遠','大社','虎尾','內惟','一心','五甲','斗六2','瑞隆','德惠','自由','福山','大寮','復興','鼎中','十全','華夏','武廟','小港'];
         const headquarters = '總公司';
         const storeLabel = name => name === headquarters ? name : name === '五甲' ? '新五甲店' : name+'店';
-        const nt = n => new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',maximumFractionDigits:2}).format(n/100);
+        const nt = n => new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',minimumFractionDigits:0,maximumFractionDigits:0}).format(n/100);
         let incomeRequest = 0;
 
         const weekFields={notes:'紙鈔',coins:'零錢',cc:'信用卡',line:'LINE Pay',receipt:'結帳單'};
@@ -626,15 +635,22 @@ const incomeStores = ['陽明','大昌','建興','後昌','左營','明誠','華
         function weeklyActual(w){
             return ['notes','coins','cc','line'].reduce((total,k)=>total+(w[k]??0),0);
         }
-        function renderWeeks(rows){
-            const fields=Object.entries(weekFields);
+        const wholeMoney=new Intl.NumberFormat('zh-TW',{maximumFractionDigits:0});
+        function displayDiff(element,cents){
+            element.dataset.sign=cents==null?'pending':cents>0?'positive':cents<0?'negative':'zero';
+            element.textContent=cents==null?'—':(cents>0?'+':'')+wholeMoney.format(cents/100);
+        }
+        function renderWeeks(rows,store,period){
             const lines=Array.from({length:6},(_,i)=>{
                 const entry=rows[weekKey(i)], w=entry?.weekly||{};
-                return `<tr data-week="${i}"><th>第 ${i+1} 週</th><td><input aria-label="第 ${i+1} 週日期" type="date" name="date" value="${escapeAttribute(entry?.date||'')}"></td>
-                ${fields.map(([k,label])=>`<td><input aria-label="第 ${i+1} 週${label}" type="number" step="0.01" min="0" max="9999999999" name="${k}" value="${w[k]==null?'':w[k]/100}"></td>`).join('')}
-                <td data-actual></td><td data-diff></td></tr>`;
+                const field=k=>`<td><input aria-label="第 ${i+1} 列${weekFields[k]}" type="number" step="1" inputmode="numeric" min="0" max="9999999999" name="${k}" placeholder="${weekFields[k]}" value="${w[k]==null?'':Math.round(w[k]/100)}"></td>`;
+                return `<tr data-week="${i}"><th scope="row"><span>${i+1}</span></th><td><input aria-label="第 ${i+1} 列日期" type="date" name="date" value="${escapeAttribute(entry?.date||'')}"></td>
+                ${['notes','coins','cc','line'].map(field).join('')}<td><output data-actual></output></td>${field('receipt')}<td><output data-diff></output></td></tr>`;
             }).join('');
-            return `<details open class="zone income-zone"><summary>每週營收紀錄</summary><p>填寫各付款方式的實收金額。儲存後會列入損益；同筆營收請只登記一次。</p><form id="weeks-form"><div class="ledger-scroll"><table class="weeks"><thead><tr><th>週次</th><th>日期</th>${fields.map(([,l])=>'<th>'+l+'</th>').join('')}<th>實收小計</th><th>差額</th></tr></thead><tbody>${lines}</tbody><tfoot><tr><th colspan="7">本月合計</th><td id="weeks-total"></td><td id="weeks-diff"></td></tr></tfoot></table></div><button class="primary-button">儲存週營收</button><p role="status"></p></form></details>`;
+            return `<details open class="week-sheet"><summary><span>🏬 ${storeLabel(store)} · ${Number(period.slice(5))} 月營收紀錄表</span><span class="sheet-toggle" aria-hidden="true"></span></summary>
+            <form id="weeks-form"><div class="ledger-scroll"><table class="weeks"><thead><tr>${['序號','🗓️ 日期','💵 紙鈔','🪙 零錢','💳 信用卡','📱 LINE Pay','🧾 實際營收小計','📝 結帳單金額','⚖️ 正負差額'].map(l=>'<th scope="col">'+l+'</th>').join('')}</tr></thead><tbody>${lines}</tbody>
+            <tfoot><tr><th colspan="6">✨ 營收合計</th><td><output id="weeks-total"></output></td><th>差額合計</th><td><output id="weeks-diff"></output></td></tr></tfoot></table></div>
+            <div class="sheet-actions"><p role="status"></p><button type="button" class="secondary-button" data-later>稍後再填</button><button class="primary-button">儲存並同步至雲端</button></div></form></details>`;
         }
         function bindWeeks(rows,store,period,active){
             const form=$('#weeks-form');
@@ -652,12 +668,15 @@ const incomeStores = ['陽明','大昌','建興','後昌','左營','明誠','華
                 for(const line of lines){
                     const w=fields(line),actual=weeklyActual(w);
                     total+=actual;
-                    line.querySelector('[data-actual]').textContent=Object.values(w).some(v=>v!=null)?nt(actual):'—';
-                    line.querySelector('[data-diff]').textContent=w.receipt==null?'—':nt(actual-w.receipt);
-                    if(w.receipt!=null){compared=true;diff+=actual-w.receipt;}
+                    line.querySelector('[data-actual]').textContent=wholeMoney.format(actual/100);
+                    const difference=w.receipt==null?null:w.receipt-actual;
+                    displayDiff(line.querySelector('[data-diff]'),difference);
+                    if(difference!=null){compared=true;diff+=difference;}
                 }
-                $('#weeks-total').textContent=nt(total);$('#weeks-diff').textContent=compared?nt(diff):'—';
+                $('#weeks-total').textContent=wholeMoney.format(total/100);
+                displayDiff($('#weeks-diff'),compared?diff:null);
             }
+            form.querySelector('[data-later]').onclick=()=>{form.closest('details').open=false;form.closest('details').querySelector('summary').focus();};
             const snapshot=line=>JSON.stringify([line.querySelector('[name=date]').value,fields(line)]);
             const initial=lines.map(snapshot);
             form.oninput=refresh;refresh();
@@ -738,7 +757,7 @@ const fixedCatalog = {
                 fixedKeys(store).map(key=>{
                     const v=fixedValue(settings[key],period);
                     return `<form class="ledger-form" data-fixed="${key}"><h3>${fixedCatalog[key]}</h3>
-                    <label>金額（新臺幣）<input name="amount" type="number" min="0" max="9999999999" step="0.01" required value="${v.cents==null?'':v.cents/100}"></label>
+                    <label>金額（新臺幣）<input name="amount" type="number" min="0" max="9999999999" step="1" inputmode="numeric" required value="${v.cents==null?'':Math.round(v.cents/100)}"></label>
                     <label>套用方式<select name="scope"><option value="one">只設定本月</option><option value="forward">本月起每月沿用</option><option value="stop">本月起停止沿用</option><option value="reset">取消本月指定金額</option></select></label>
                     <div><button class="secondary-button">儲存設定</button></div><p role="status">${v.source}</p></form>`;
                 }).join('')+'</section>';
@@ -889,7 +908,7 @@ const fixedCatalog = {
             body.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>edit(...ordered[Number(b.dataset.edit)]));
             body.querySelectorAll('[data-new-kind]').forEach(b=>b.onclick=()=>edit(crypto.randomUUID(),null,b.dataset.newKind));
             if(!company){
-                body.querySelector('.ledger-stats').insertAdjacentHTML('afterend',renderWeeks(rows));
+                body.querySelector('.ledger-stats').insertAdjacentHTML('afterend',renderWeeks(rows,selected,period));
                 bindWeeks(rows,selected,period,active);
             }
 
@@ -923,7 +942,7 @@ const fixedCatalog = {
                 <label>類別<select name="kind">${(company?['支出']:['收入','支出']).map(k=>`<option ${row.kind===k?'selected':''}>${k}</option>`).join('')}</select></label>
                 <label>收款人<input name="payee" maxlength="100" value="${escapeAttribute(row.payee)}"></label>
                 <label>項目<input required name="item" maxlength="200" value="${escapeAttribute(row.item)}"></label>
-                <label>金額（新臺幣）<input required type="number" min="0" max="9999999999" step="0.01" name="amount" value="${row.cents===null?'':row.cents/100}"></label>
+                <label>金額（新臺幣）<input required type="number" min="0" max="9999999999" step="1" inputmode="numeric" name="amount" value="${row.cents===null?'':Math.round(row.cents/100)}"></label>
                 <div><button class="primary-button">儲存</button> <button type="button" class="secondary-button" data-cancel>取消</button> ${original?'<button type="button" data-remove>刪除這筆</button>':''}</div><p role="status"></p></form>`;
                 const form=editor.firstElementChild;
                 form.elements.kind.onchange=()=>{if(form.elements.kind.value==='支出' && form.elements.item.value==='營業收入')form.elements.item.value='';};
