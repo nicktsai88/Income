@@ -846,8 +846,8 @@ const fixedCatalog = {
                 ['本期損益',revenue-expense-companyExpense,'profit-zone']
             ];
         }
-        function summarizeYear(docs) {
-            const months=Array.from({length:12},()=>({revenue:0,expense:0,hq:0,count:0}));
+        function summarizeYear(docs,year,closed) {
+            const months=Array.from({length:12},(_,i)=>({revenue:0,expense:0,hq:0,count:0,complete:closed[year+'-'+String(i+1).padStart(2,'0')]===true}));
             for(const [store,list] of docs) for(const doc of list) {
                 const m=months[Number(doc.id.slice(5))-1],rows=doc.data().rows || {};
                 if(!m || !Object.keys(rows).length)continue;
@@ -858,8 +858,9 @@ const fixedCatalog = {
             }
             const annual={revenue:0,expense:0,hq:0,count:0};
             for(const m of months){
+                if(!m.complete)continue;
                 annual.revenue+=m.revenue;annual.expense+=m.expense;annual.hq+=m.hq;
-                if(m.count)annual.count++;
+                annual.count++;
             }
             return {months,annual};
         }
@@ -881,8 +882,10 @@ const fixedCatalog = {
             $('#yr-store').onchange=e=>openIncomeYear(year,e.target.value);
             const panel=$('#yr-data');
             try{
+                const selectedConfig=await cloud.readIncome(cloud.fixedRef(selected));
+                const closed=selectedConfig.data()?.items?.closedMonths||{};
                 const docs=await Promise.all(visible.map(async store=>{
-                    const [book,config]=await Promise.all([cloud.incomeYear(store,year),cloud.readIncome(cloud.fixedRef(store))]);
+                    const [book,config]=await Promise.all([cloud.incomeYear(store,year),store===selected?selectedConfig:cloud.readIncome(cloud.fixedRef(store))]);
                     const items=config.data()?.items||{};
                     const recorded=new Map(book.docs.map(doc=>[doc.id,doc.data().rows||{}]));
                     const periods=Array.from({length:12},(_,i)=>{
@@ -892,12 +895,12 @@ const fixedCatalog = {
                     return [store,periods];
                 }));
                 if(!active())return;
-                const {months,annual}=summarizeYear(docs);
+                const {months,annual}=summarizeYear(docs,year,closed);
                 const profit=m=>m.revenue-m.expense-m.hq;
-                const values=m=>[m.revenue,m.expense,...(company?[m.hq]:[]),profit(m)].map(v=>`<td class="${v<0?'loss':''}">${m.count?nt(v):'—'}</td>`).join('');
+                const values=m=>[m.revenue,m.expense,...(company?[m.hq]:[]),profit(m)].map(v=>`<td class="${(m.complete??Boolean(m.count)) && v<0?'loss':''}">${(m.complete??Boolean(m.count))?nt(v):'—'}</td>`).join('');
                 panel.innerHTML=`<h2>${year} 年 · ${storeLabel(selected)}</h2><div class="ledger-stats">${[['年度營業收入',annual.revenue],['年度總支出',annual.expense+annual.hq],['年度損益',profit(annual)]].map(([l,v],i)=>`<div class="${['income-zone','expense-zone','profit-zone'][i]}"><span>${l}</span><strong class="${v<0?'loss':''}">${annual.count?nt(v):'—'}</strong></div>`).join('')}</div>
-                <p>已登記 ${annual.count}／12 個月。年度合計含逐筆明細與每月固定支出，包含已設定沿用金額的未來月份。</p><div class="ledger-scroll"><table><thead><tr><th>月份</th><th>營業收入</th><th>分店支出</th>${company?'<th>公司支出</th>':''}<th>損益</th><th>登記情形</th></tr></thead><tbody>
-                ${months.map((m,i)=>`<tr><th scope="row"><button type="button" class="small-action month-entry" data-month="${i+1}" aria-label="開啟${storeLabel(selected)} ${year} 年 ${i+1} 月帳本">${i+1} 月<span aria-hidden="true">›</span></button></th>${values(m)}<td>${m.count?(company?m.count+'／'+visible.length+' 本有明細':'已登記'):'尚未記帳'}</td></tr>`).join('')}
+                <p>已完成 ${annual.count}／12 個月。年度合計只納入在${storeLabel(selected)}月帳本標記為已完成的月份。</p><div class="ledger-scroll"><table><thead><tr><th>月份</th><th>營業收入</th><th>分店支出</th>${company?'<th>公司支出</th>':''}<th>損益</th><th>登記情形</th></tr></thead><tbody>
+                ${months.map((m,i)=>`<tr><th scope="row"><button type="button" class="small-action month-entry" data-month="${i+1}" aria-label="開啟${storeLabel(selected)} ${year} 年 ${i+1} 月帳本">${i+1} 月<span aria-hidden="true">›</span></button></th>${values(m)}<td>${m.complete?'已完成 · 已納入':'未完成 · 待確認'}</td></tr>`).join('')}
                 </tbody><tfoot><tr><th>全年合計</th>${values(annual)}<td>${annual.count} 個月</td></tr></tfoot></table></div>`;
                 panel.querySelectorAll('[data-month]').forEach(b=>b.onclick=()=>openIncome(year+'-'+b.dataset.month.padStart(2,'0'),selected));
                 if(company){
@@ -964,6 +967,7 @@ const fixedCatalog = {
             <strong class="${value<0?'loss':''}">${nt(value)}</strong>
             ${company?`<div class="amount-track" aria-hidden="true"><i style="width:${100*Math.abs(value)/scale}%"></i></div>`:''}</div>`).join('')}</div>
             ${company?'<p class="company-formula">本期損益 ＝ 各店收入合計 − 各店支出合計 − 總公司支出合計</p>':''}
+            <div class="section-head"><button type="button" class="secondary-button" id="month-completion"></button><span role="status" id="completion-status"></span></div>
             ${company?`<details class="zone profit-zone"><summary>各店損益明細（26 店）</summary><div class="ledger-scroll"><table><thead><tr><th>分店</th><th>營業收入</th><th>分店支出</th><th>本期損益</th></tr></thead><tbody>${branches.map(b=>`<tr><td><button type="button" data-store="${b.store}">${storeLabel(b.store)}</button></td><td>${nt(b.revenue)}</td><td>${nt(b.expense)}</td><td>${nt(b.profit)}</td></tr>`).join('')}</tbody></table></div></details>`:''}
             <dialog class="fix-dialog" id="fixed-dialog" aria-labelledby="fixed-title"><header class="section-head fix-head"><h2 id="fixed-title">每月固定項目 · ${storeLabel(selected)} · ${period}</h2><button type="button" class="secondary-button" id="fixed-close" autofocus>關閉</button></header><div class="fix-content">${fixedForm(selected,settings[selected],period)}</div></dialog>
             ${(company?['支出']:['收入','支出']).map(kind=>{
@@ -973,6 +977,32 @@ const fixedCatalog = {
                 <div id="editor-${kind}"></div>${entries.length||fixed.length?`<div class="ledger-scroll"><table><thead><tr><th>日期</th><th>收款人</th><th>項目</th><th>金額</th><th></th></tr></thead><tbody>${fixed.map(row=>`<tr><td>每月固定</td><td>—</td><td>${escapeAttribute(row.item)}</td><td>${nt(row.cents)}</td><td></td></tr>`).join('')}${entries.map(({row,index})=>`<tr><td>${escapeAttribute(row.date)}</td><td>${escapeAttribute(row.payee)||'—'}</td><td>${escapeAttribute(row.item)}</td><td>${nt(row.cents)}</td><td><button data-edit="${index}">編輯</button></td></tr>`).join('')}</tbody></table></div>`:`<p>本月尚無${income?'其他收入':'支出'}。</p>`}</section>`;
             }).join('')}`;
             const dialog=$('#fixed-dialog'), trigger=$('#edit-fixed');
+            {
+                const button=$('#month-completion'),status=$('#completion-status');
+                let complete=settings[selected].closedMonths?.[period]===true;
+                function displayCompletion(){
+                    button.textContent=complete?'重新開啟本月':'標記本月已完成';
+                    status.textContent=complete?'已完成 · 已納入年度損益':'未完成 · 尚未納入年度損益';
+                }
+                displayCompletion();
+                button.onclick=async()=>{
+                    const next=!complete;
+                    const book=storeLabel(selected)+' '+period;
+                    if(!confirm(next?'確認 '+book+' 已填寫完成，並納入該帳本年度損益？':'將 '+book+' 改回未完成，暫時移出該帳本年度損益？'))return;
+                    button.disabled=true;
+                    try{
+                        await cloud.incomeTransaction(async tx=>{
+                            const target=cloud.fixedRef(selected),snap=await tx.get(target);
+                            const items=snap.data()?.items||{},closedMonths={...items.closedMonths};
+                            if(next)closedMonths[period]=true;
+                            else delete closedMonths[period];
+                            tx.set(target,{items:{...items,closedMonths}});
+                        });
+                        if(active()){complete=next;displayCompletion();}
+                    }catch{status.textContent='完成狀態未儲存，請重試。';}
+                    finally{button.disabled=false;}
+                };
+            }
             trigger.disabled=false;
             trigger.onclick=()=>dialog.showModal();
             $('#fixed-close').onclick=()=>dialog.close();
