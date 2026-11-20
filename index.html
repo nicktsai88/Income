@@ -768,12 +768,16 @@ const incomeStores = ['陽明','大昌','建興','後昌','左營','明誠','華
         }
 const fixedCatalog = {
             rent:'分店房租', clean:'樂清（地墊清潔費）',
+            managementFee:'管理費',
             yuanta:'元大銀行房貸（美術皇居66號／68號／隆大）',
+            yuanta66:'元大銀行房貸（美術皇居66號）', yuanta68:'元大銀行房貸（美術皇居68號）',
+            landMuseum:'土地銀行房貸（仰德美術館）',
             esun:'玉山銀行房貸（大社）', land:'土地銀行房貸（台灣隱賦）',
             salary:'總薪資', bonus:'分紅獎金'
         };
         function fixedKeys(store) {
-            return store===headquarters?['clean','yuanta','esun','land','salary','bonus']:['rent'];
+            if(store==='自由') return ['rent','managementFee'];
+            return store===headquarters?['clean','yuanta66','yuanta68','esun','landMuseum','land','salary','bonus']:['rent'];
         }
         function fixedValue(series,period) {
             const changes=series?.changes||{};
@@ -789,13 +793,23 @@ const fixedCatalog = {
                 const {cents}=fixedValue(settings[key],period);
                 if(cents!=null)rows['fixed:'+key]={kind:'支出',item:fixedCatalog[key],date:period+'-01',cents};
             }
+            if(store===headquarters){
+                const legacy=fixedValue(settings.yuanta,period).cents;
+                if(legacy!=null && (!rows['fixed:yuanta66'] || !rows['fixed:yuanta68'])){
+                    delete rows['fixed:yuanta66'];
+                    delete rows['fixed:yuanta68'];
+                    rows['fixed:yuanta']={kind:'支出',item:fixedCatalog.yuanta+'（舊合計）',date:period+'-01',cents:legacy};
+                }
+            }
             return rows;
         }
         function fixedForm(store,settings,period) {
             return '<section><p>金額留白的項目暫不計入。若同筆費用已在其他明細登記，請擇一保留。選擇「本月起每月沿用」後，未來月份的月報及年報也會列入該金額。</p>'+
+                (store===headquarters && fixedValue(settings.yuanta,period).cents!=null?'<p>本月已有舊版元大房貸合計。66 號與 68 號金額都填妥後，月報會改採兩筆新金額。當月無支出的項目可填 0。</p>':'')+
                 fixedKeys(store).map(key=>{
                     const v=fixedValue(settings[key],period);
-                    return `<form class="ledger-form" data-fixed="${key}"><h3>${fixedCatalog[key]}</h3>
+                    const heading=store===headquarters && key==='clean'?'<h3>固定支出</h3>':key==='salary'?'<h3>每月變動支出</h3>':'';
+                    return heading+`<form class="ledger-form" data-fixed="${key}"><h3>${fixedCatalog[key]}</h3>
                     <label>金額（新臺幣）<input name="amount" type="text" pattern="[0-9]{1,10}" title="請輸入 0 至 9999999999 的整數金額" inputmode="numeric" required value="${v.cents==null?'':Math.round(v.cents/100)}"></label>
                     <label>套用方式<select name="scope"><option value="one">只設定本月</option><option value="forward">本月起每月沿用</option><option value="stop">本月起停止沿用</option><option value="reset">取消本月指定金額</option></select></label>
                     <div><button class="secondary-button">儲存設定</button></div><p role="status">${v.source}</p></form>`;
