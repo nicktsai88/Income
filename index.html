@@ -576,6 +576,17 @@
 .company-formula{color:#524565;font-size:.92em}
 @media(max-width:900px){.ledger .company-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:400px){.company-stats>div{padding:.65em}.company-stats strong{font-size:1.05em}}
+.ledger label.completion-toggle{display:inline-flex;align-items:center;gap:.65em;min-height:44px;padding:.4em .85em;border:2px solid #bc9caf;border-radius:12px;background:white;color:#644459;font-weight:750;cursor:pointer}
+.ledger .completion-toggle input{appearance:auto;accent-color:#225d17;width:1.15em;height:1.15em;min-height:0;margin:0;padding:0;cursor:pointer}
+.ledger label.completion-toggle.is-complete{background:#ffff00;color:#302900;border-color:#897400;box-shadow:0 0 0 3px #ffff0055}
+.ledger .completion-toggle.is-complete input{accent-color:#534600}
+.completion-toggle:focus-within{outline:3px solid #674394;outline-offset:3px}
+.ledger .transaction-form{display:flex;flex-wrap:wrap;align-items:flex-end}
+.transaction-form>h3,.transaction-form>div,.transaction-form>p{flex:0 0 100%}
+.transaction-form>label{flex:1 1 8em;min-inline-size:min(100%,8em)}
+.transaction-form>label.transaction-date{flex:1 1 13em;min-inline-size:min(100%,13em)}
+.transaction-form>label>input,.transaction-form>label>select{box-sizing:border-box;width:100%;min-width:0}
+.transaction-date input::-webkit-calendar-picker-indicator{flex-shrink:0;margin-inline-start:.45em}
 </style>
 <script type="text/plain" id="income-firestore-rules">
 // 放在現有 Firestore 規則的 match /databases/{database}/documents 內，取代原有 Income 授權，並核對是否有其他重疊規則授權其他帳號。
@@ -967,7 +978,7 @@ const fixedCatalog = {
             <strong class="${value<0?'loss':''}">${nt(value)}</strong>
             ${company?`<div class="amount-track" aria-hidden="true"><i style="width:${100*Math.abs(value)/scale}%"></i></div>`:''}</div>`).join('')}</div>
             ${company?'<p class="company-formula">本期損益 ＝ 各店收入合計 − 各店支出合計 − 總公司支出合計</p>':''}
-            <div class="section-head"><button type="button" class="secondary-button" id="month-completion"></button><span role="status" id="completion-status"></span></div>
+            <div class="section-head"><label class="completion-toggle"><input type="checkbox" id="month-completion" aria-describedby="completion-status">標記本月已完成</label><span role="status" id="completion-status"></span></div>
             ${company?`<details class="zone profit-zone"><summary>各店損益明細（26 店）</summary><div class="ledger-scroll"><table><thead><tr><th>分店</th><th>營業收入</th><th>分店支出</th><th>本期損益</th></tr></thead><tbody>${branches.map(b=>`<tr><td><button type="button" data-store="${b.store}">${storeLabel(b.store)}</button></td><td>${nt(b.revenue)}</td><td>${nt(b.expense)}</td><td>${nt(b.profit)}</td></tr>`).join('')}</tbody></table></div></details>`:''}
             <dialog class="fix-dialog" id="fixed-dialog" aria-labelledby="fixed-title"><header class="section-head fix-head"><h2 id="fixed-title">每月固定項目 · ${storeLabel(selected)} · ${period}</h2><button type="button" class="secondary-button" id="fixed-close" autofocus>關閉</button></header><div class="fix-content">${fixedForm(selected,settings[selected],period)}</div></dialog>
             ${(company?['支出']:['收入','支出']).map(kind=>{
@@ -978,18 +989,20 @@ const fixedCatalog = {
             }).join('')}`;
             const dialog=$('#fixed-dialog'), trigger=$('#edit-fixed');
             {
-                const button=$('#month-completion'),status=$('#completion-status');
+                const checkbox=$('#month-completion'),status=$('#completion-status');
                 let complete=settings[selected].closedMonths?.[period]===true;
                 function displayCompletion(){
-                    button.textContent=complete?'重新開啟本月':'標記本月已完成';
+                    checkbox.checked=complete;
+                    checkbox.parentElement.classList.toggle('is-complete',complete);
                     status.textContent=complete?'已完成 · 已納入年度損益':'未完成 · 尚未納入年度損益';
                 }
                 displayCompletion();
-                button.onclick=async()=>{
-                    const next=!complete;
+                checkbox.onchange=async()=>{
+                    const next=checkbox.checked;
                     const book=storeLabel(selected)+' '+period;
-                    if(!confirm(next?'確認 '+book+' 已填寫完成，並納入該帳本年度損益？':'將 '+book+' 改回未完成，暫時移出該帳本年度損益？'))return;
-                    button.disabled=true;
+                    if(!confirm(next?'確認 '+book+' 已填寫完成，並納入該帳本年度損益？':'將 '+book+' 改回未完成，暫時移出該帳本年度損益？')){displayCompletion();return;}
+                    checkbox.disabled=true;
+                    status.textContent='正在儲存月結狀態…';
                     try{
                         await cloud.incomeTransaction(async tx=>{
                             const target=cloud.fixedRef(selected),snap=await tx.get(target);
@@ -999,8 +1012,8 @@ const fixedCatalog = {
                             tx.set(target,{items:{...items,closedMonths}});
                         });
                         if(active()){complete=next;displayCompletion();}
-                    }catch{status.textContent='完成狀態未儲存，請重試。';}
-                    finally{button.disabled=false;}
+                    }catch{displayCompletion();status.textContent='完成狀態未儲存，請重試。';}
+                    finally{checkbox.disabled=false;}
                 };
             }
             trigger.disabled=false;
@@ -1040,7 +1053,7 @@ const fixedCatalog = {
             function edit(id,original,newKind='支出') {
                 const row=original || {date:today.startsWith(period)?today:period+'-01',kind:newKind,payee:'',item:newKind==='收入'?'營業收入':'',cents:null};
                 const editor=$('#editor-'+row.kind);
-                editor.innerHTML=`<form class="ledger-form"><h3>${original?'編輯':'新增'}明細</h3><label>交易日期<input required type="date" name="date" value="${escapeAttribute(row.date)}"></label>
+                editor.innerHTML=`<form class="ledger-form transaction-form"><h3>${original?'編輯':'新增'}明細</h3><label class="transaction-date">交易日期<input required type="date" name="date" value="${escapeAttribute(row.date)}"></label>
                 <label>類別<select name="kind">${(company?['支出']:['收入','支出']).map(k=>`<option ${row.kind===k?'selected':''}>${k}</option>`).join('')}</select></label>
                 <label>收款人<input name="payee" maxlength="100" value="${escapeAttribute(row.payee)}"></label>
                 <label>項目<input required name="item" maxlength="200" value="${escapeAttribute(row.item)}"></label>
