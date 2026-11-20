@@ -551,6 +551,21 @@
     .sheet-actions{padding:.8em}
 }
 @media screen and (min-width:2100px){.page.ledger{max-width:90em}}
+
+.ledger .month-entry {
+    display:inline-flex;align-items:center;justify-content:space-between;gap:.85em;
+    min-width:6em;padding-inline:.85em;font-size:.9em;color:#703659;
+    background:#f7dfef;border:1px solid #c580ad;transform-origin:left center;
+    transition:transform .15s ease-out,background-color .15s,color .15s;
+}
+.month-entry span {font-size:1.35em;line-height:1}
+.ledger .month-entry:focus-visible {background:#823d70;color:white;outline:3px solid #62335d;outline-offset:2px}
+@media (hover:hover) and (pointer:fine) {
+    .ledger .month-entry:hover {background:#823d70;color:white;transform:scale(1.06)}
+}
+@media (prefers-reduced-motion:reduce) {
+    .ledger .month-entry,.ledger .month-entry:hover {transition:none;transform:none}
+}
 </style>
 <script type="text/plain" id="income-firestore-rules">
 // 放在現有 Firestore 規則的 match /databases/{database}/documents 內，取代原有 Income 授權，並核對是否有其他重疊規則授權其他帳號。
@@ -637,9 +652,10 @@ function showToast(message) {
         }
 
         
-const incomeStores = ['陽明','大昌','建興','後昌','左營','明誠','華榮','斗六','光遠','大社','虎尾','內惟','一心','五甲','斗六2','瑞隆','德惠','自由','福山','大寮','復興','鼎中','十全','華夏','武廟','小港'];
+const incomeStores = ['陽明','大昌','建興','後昌','左營','明誠','華榮','光遠','大社','內惟','一心','五甲','瑞隆','德惠','自由','福山','大寮','復興','鼎中','十全','華夏','武廟','小港','斗六','斗六2','虎尾'];
         const headquarters = '總公司';
-        const storeLabel = name => name === headquarters ? name : name === '五甲' ? '新五甲店' : name+'店';
+        const storeNames = {'五甲':'新五甲店','斗六':'斗六1店'};
+        const storeLabel = name => name === headquarters ? name : storeNames[name] || name+'店';
         const nt = n => new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',minimumFractionDigits:0,maximumFractionDigits:0}).format(n/100);
         let incomeRequest = 0;
 
@@ -846,7 +862,7 @@ const fixedCatalog = {
                 const values=m=>[m.revenue,m.expense,...(company?[m.hq]:[]),profit(m)].map(v=>`<td class="${v<0?'loss':''}">${m.count?nt(v):'—'}</td>`).join('');
                 panel.innerHTML=`<h2>${year} 年 · ${storeLabel(selected)}</h2><div class="ledger-stats">${[['年度營業收入',annual.revenue],['年度總支出',annual.expense+annual.hq],['年度損益',profit(annual)]].map(([l,v],i)=>`<div class="${['income-zone','expense-zone','profit-zone'][i]}"><span>${l}</span><strong class="${v<0?'loss':''}">${annual.count?nt(v):'—'}</strong></div>`).join('')}</div>
                 <p>已登記 ${annual.count}／12 個月。年度合計含逐筆明細與每月固定支出，包含已設定沿用金額的未來月份。</p><div class="ledger-scroll"><table><thead><tr><th>月份</th><th>營業收入</th><th>分店支出</th>${company?'<th>公司支出</th>':''}<th>損益</th><th>登記情形</th></tr></thead><tbody>
-                ${months.map((m,i)=>`<tr><th><button class="small-action" data-month="${i+1}">${i+1} 月</button></th>${values(m)}<td>${m.count?(company?m.count+'／'+visible.length+' 本有明細':'已登記'):'尚未記帳'}</td></tr>`).join('')}
+                ${months.map((m,i)=>`<tr><th scope="row"><button type="button" class="small-action month-entry" data-month="${i+1}" aria-label="開啟${storeLabel(selected)} ${year} 年 ${i+1} 月帳本">${i+1} 月<span aria-hidden="true">›</span></button></th>${values(m)}<td>${m.count?(company?m.count+'／'+visible.length+' 本有明細':'已登記'):'尚未記帳'}</td></tr>`).join('')}
                 </tbody><tfoot><tr><th>全年合計</th>${values(annual)}<td>${annual.count} 個月</td></tr></tfoot></table></div>`;
                 panel.querySelectorAll('[data-month]').forEach(b=>b.onclick=()=>openIncome(year+'-'+b.dataset.month.padStart(2,'0'),selected));
                 if(company){
