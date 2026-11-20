@@ -809,9 +809,10 @@ const fixedCatalog = {
                 fixedKeys(store).map(key=>{
                     const v=fixedValue(settings[key],period);
                     const heading=store===headquarters && key==='clean'?'<h3>固定支出</h3>':key==='salary'?'<h3>每月變動支出</h3>':'';
+                    const variableExpense=key==='salary' || key==='bonus';
                     return heading+`<form class="ledger-form" data-fixed="${key}"><h3>${fixedCatalog[key]}</h3>
                     <label>金額（新臺幣）<input name="amount" type="text" pattern="[0-9]{1,10}" title="請輸入 0 至 9999999999 的整數金額" inputmode="numeric" required value="${v.cents==null?'':Math.round(v.cents/100)}"></label>
-                    <label>套用方式<select name="scope"><option value="one">只設定本月</option><option value="forward">本月起每月沿用</option><option value="stop">本月起停止沿用</option><option value="reset">取消本月指定金額</option></select></label>
+                    <label>套用方式<select name="scope"><option value="one"${variableExpense?' selected':''}>只設定本月</option><option value="forward"${variableExpense?'':' selected'}>本月起每月沿用</option><option value="stop">本月起停止沿用</option><option value="reset">取消本月指定金額</option></select></label>
                     <div><button class="secondary-button">儲存設定</button></div><p role="status">${v.source}</p></form>`;
                 }).join('')+'</section>';
         }
