@@ -566,6 +566,16 @@
 @media (prefers-reduced-motion:reduce) {
     .ledger .month-entry,.ledger .month-entry:hover {transition:none;transform:none}
 }
+
+.ledger .hq-expense-zone{--tone:#176570;--tint:#e8f6f5}
+.ledger .company-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+.company-stats>div{min-width:0}.company-stats strong{font-variant-numeric:tabular-nums}
+.company-stats .math-mark{display:inline-block;margin-right:.35em}
+.company-stats .amount-track{height:.32em;margin-top:.65em;background:#ffffffb8;border-radius:1em;overflow:hidden}
+.company-stats .amount-track i{display:block;background:var(--tone);height:100%;border-radius:inherit}
+.company-formula{color:#524565;font-size:.92em}
+@media(max-width:900px){.ledger .company-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:400px){.company-stats>div{padding:.65em}.company-stats strong{font-size:1.05em}}
 </style>
 <script type="text/plain" id="income-firestore-rules">
 // 放在現有 Firestore 規則的 match /databases/{database}/documents 內，取代原有 Income 授權，並核對是否有其他重疊規則授權其他帳號。
@@ -811,6 +821,16 @@ const fixedCatalog = {
         }
 
 
+        function companyMonthCards(branches,companyExpense){
+            const revenue=branches.reduce((sum,branch)=>sum+branch.revenue,0);
+            const expense=branches.reduce((sum,branch)=>sum+branch.expense,0);
+            return [
+                ['各店收入合計',revenue,'income-zone'],
+                ['各店支出合計',expense,'expense-zone'],
+                ['總公司支出合計',companyExpense,'hq-expense-zone'],
+                ['本期損益',revenue-expense-companyExpense,'profit-zone']
+            ];
+        }
         function summarizeYear(docs) {
             const months=Array.from({length:12},()=>({revenue:0,expense:0,hq:0,count:0}));
             for(const [store,list] of docs) for(const doc of list) {
@@ -918,9 +938,17 @@ const fixedCatalog = {
             const storeTotals=store=>sumLedger({...books[store],...fixedRows(store,settings[store],period)});
             const totals=storeTotals(selected);
             const branches=company?incomeStores.map(store=>({store,...storeTotals(store)})):[];
-            const revenue=company?branches.reduce((sum,b)=>sum+b.profit,0):totals.revenue;
+            const cards=company?companyMonthCards(branches,totals.expense):[
+                ['營業收入',totals.revenue,'income-zone'],['分店支出',totals.expense,'expense-zone'],['本期損益',totals.profit,'profit-zone']
+            ];
+            const scale=Math.max(1,...cards.map(([,v])=>Math.abs(v)));
             const ordered=Object.entries(rows).filter(([,row])=>!row.weekly).sort(([,a],[,b])=>a.date.localeCompare(b.date));
-            body.innerHTML=`<h2>${storeLabel(selected)} · ${period}</h2><div class="ledger-stats">${[[company?'各店損益合計':'營業收入',revenue],[company?'公司支出':'分店支出',totals.expense],['本期損益',revenue-totals.expense]].map(([label,value],i)=>`<div class="${[company?'profit-zone':'income-zone','expense-zone','profit-zone'][i]}"><span>${label}</span><strong class="${value<0?'loss':''}">${nt(value)}</strong></div>`).join('')}</div>
+            body.innerHTML=`<h2>${storeLabel(selected)} · ${period}</h2>
+            <div class="ledger-stats ${company?'company-stats':''}">${cards.map(([label,value,theme],i)=>`<div class="${theme}">
+            <span>${company && i>0?`<b class="math-mark" aria-hidden="true">${i===3?'＝':'−'}</b>`:''}${label}</span>
+            <strong class="${value<0?'loss':''}">${nt(value)}</strong>
+            ${company?`<div class="amount-track" aria-hidden="true"><i style="width:${100*Math.abs(value)/scale}%"></i></div>`:''}</div>`).join('')}</div>
+            ${company?'<p class="company-formula">本期損益 ＝ 各店收入合計 − 各店支出合計 − 總公司支出合計</p>':''}
             ${company?`<details class="zone profit-zone"><summary>各店損益明細（26 店）</summary><div class="ledger-scroll"><table><thead><tr><th>分店</th><th>營業收入</th><th>分店支出</th><th>本期損益</th></tr></thead><tbody>${branches.map(b=>`<tr><td><button type="button" data-store="${b.store}">${storeLabel(b.store)}</button></td><td>${nt(b.revenue)}</td><td>${nt(b.expense)}</td><td>${nt(b.profit)}</td></tr>`).join('')}</tbody></table></div></details>`:''}
             <dialog class="fix-dialog" id="fixed-dialog" aria-labelledby="fixed-title"><header class="section-head fix-head"><h2 id="fixed-title">每月固定項目 · ${storeLabel(selected)} · ${period}</h2><button type="button" class="secondary-button" id="fixed-close" autofocus>關閉</button></header><div class="fix-content">${fixedForm(selected,settings[selected],period)}</div></dialog>
             ${(company?['支出']:['收入','支出']).map(kind=>{
