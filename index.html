@@ -1055,8 +1055,8 @@ const fixedCatalog = {
                 const editor=$('#editor-'+row.kind);
                 editor.innerHTML=`<form class="ledger-form transaction-form"><h3>${original?'編輯':'新增'}明細</h3><label class="transaction-date">交易日期<input required type="date" name="date" value="${escapeAttribute(row.date)}"></label>
                 <label>類別<select name="kind">${(company?['支出']:['收入','支出']).map(k=>`<option ${row.kind===k?'selected':''}>${k}</option>`).join('')}</select></label>
-                <label>收款人<input name="payee" maxlength="100" value="${escapeAttribute(row.payee)}"></label>
-                <label>項目<input required name="item" maxlength="200" value="${escapeAttribute(row.item)}"></label>
+                <label>收款人<input name="payee" lang="zh-TW" inputmode="text" title="使用繁體中文輸入。Windows 可按 Win＋空白鍵選擇中文輸入法。" maxlength="100" value="${escapeAttribute(row.payee)}"></label>
+                <label>項目<input required name="item" lang="zh-TW" inputmode="text" title="使用繁體中文輸入。Windows 可按 Win＋空白鍵選擇中文輸入法。" maxlength="200" value="${escapeAttribute(row.item)}"></label>
                 <label>金額（新臺幣）<input required type="text" pattern="[0-9]{1,10}" title="請輸入 0 至 9999999999 的整數金額" inputmode="numeric" name="amount" value="${row.cents===null?'':Math.round(row.cents/100)}"></label>
                 <div><button class="primary-button">儲存</button> <button type="button" class="secondary-button" data-cancel>取消</button> ${original?'<button type="button" data-remove>刪除這筆</button>':''}</div><p role="status"></p></form>`;
                 const form=editor.firstElementChild;
